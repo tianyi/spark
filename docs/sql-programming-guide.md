@@ -580,6 +580,10 @@ The Thrift JDBC server implemented here corresponds to the [`HiveServer2`]
 (https://cwiki.apache.org/confluence/display/Hive/Setting+Up+HiveServer2) in Hive 0.12. You can test
 the JDBC server with the beeline script comes with either Spark or Hive 0.12.
 
+To run JDBC server on YARN, add the following line to spark-env.sh:
+
+    MASTER=yarn-client
+
 To start the JDBC server, run the following in the Spark directory:
 
     ./sbin/start-thriftserver.sh
