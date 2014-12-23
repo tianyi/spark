@@ -46,7 +46,7 @@ class ParquetFilterSuite extends QueryTest with ParquetTest {
       expectedResult: => Any): Unit = {
     withSQLConf(SQLConf.PARQUET_FILTER_PUSHDOWN_ENABLED -> "true") {
       val query = rdd.select(output.map(_.attr): _*).where(predicate)
-
+      System.err.println(query.queryExecution.executedPlan)
       val maybeAnalyzedPredicate = query.queryExecution.executedPlan.collect {
         case plan: ParquetTableScan => plan.columnPruningPred
       }.flatten.reduceOption(_ && _)
@@ -91,6 +91,58 @@ class ParquetFilterSuite extends QueryTest with ParquetTest {
     }
   }
 
+  test("filter pushdown - byte") {
+    withParquetRDD((1 to 4).map(i => Tuple1(i.toByte))) { rdd =>
+      checkFilterPushdown(rdd, '_1)('_1 === 1, classOf[Eq[Integer]])(1)
+      checkFilterPushdown(rdd, '_1)('_1 !== 1, classOf[Operators.NotEq[java.lang.Byte]]) {
+        (2 to 4).map(Row.apply(_))
+      }
+
+      checkFilterPushdown(rdd, '_1)('_1 < 2,  classOf[Lt  [Integer]])(1)
+      checkFilterPushdown(rdd, '_1)('_1 > 3,  classOf[Gt  [Integer]])(4)
+      checkFilterPushdown(rdd, '_1)('_1 <= 1.toByte, classOf[LtEq[Integer]])(1)
+      checkFilterPushdown(rdd, '_1)('_1 >= 4.toByte, classOf[GtEq[Integer]])(4)
+
+      checkFilterPushdown(rdd, '_1)(Literal(1.toByte) === '_1, classOf[Eq  [Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(2.toByte) >   '_1, classOf[Lt  [Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(3.toByte) <   '_1, classOf[Gt  [Integer]])(4)
+      checkFilterPushdown(rdd, '_1)(Literal(1.toByte) >=  '_1, classOf[LtEq[Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(4.toByte) <=  '_1, classOf[GtEq[Integer]])(4)
+
+      checkFilterPushdown(rdd, '_1)(!('_1 < 4.toByte), classOf[GtEq[Integer]])(4)
+      checkFilterPushdown(rdd, '_1)('_1 > 2.toByte && '_1 < 4.toByte, classOf[Operators.And])(3)
+      checkFilterPushdown(rdd, '_1)('_1 < 2.toByte || '_1 > 3.toByte, classOf[Operators.Or]) {
+        Seq(Row(1), Row(4))
+      }
+    }
+  }
+
+  test("filter pushdown - short") {
+    withParquetRDD((1 to 4).map(i => Tuple1(i.toShort))) { rdd =>
+      checkFilterPushdown(rdd, '_1)('_1 === 1.toShort, classOf[Eq[java.lang.Short]])(1)
+      checkFilterPushdown(rdd, '_1)('_1 !== 1.toShort, classOf[Operators.NotEq[java.lang.Short]]) {
+        (2 to 4).map(Row.apply(_))
+      }
+
+      checkFilterPushdown(rdd, '_1)('_1 < 2.toShort,  classOf[Lt  [Integer]])(1)
+      checkFilterPushdown(rdd, '_1)('_1 > 3.toShort,  classOf[Gt  [Integer]])(4)
+      checkFilterPushdown(rdd, '_1)('_1 <= 1.toShort, classOf[LtEq[Integer]])(1)
+      checkFilterPushdown(rdd, '_1)('_1 >= 4.toShort, classOf[GtEq[Integer]])(4)
+
+      checkFilterPushdown(rdd, '_1)(Literal(1.toShort) === '_1, classOf[Eq  [Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(2.toShort) >   '_1, classOf[Lt  [Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(3.toShort) <   '_1, classOf[Gt  [Integer]])(4)
+      checkFilterPushdown(rdd, '_1)(Literal(1.toShort) >=  '_1, classOf[LtEq[Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(4.toShort) <=  '_1, classOf[GtEq[Integer]])(4)
+
+      checkFilterPushdown(rdd, '_1)(!('_1 < 4.toShort), classOf[GtEq[Integer]])(4)
+      checkFilterPushdown(rdd, '_1)('_1 > 2.toShort && '_1 < 4.toShort, classOf[Operators.And])(3)
+      checkFilterPushdown(rdd, '_1)('_1 < 2.toShort || '_1 > 3.toShort, classOf[Operators.Or]) {
+        Seq(Row(1), Row(4))
+      }
+    }
+  }
+
   test("filter pushdown - integer") {
     withParquetRDD((1 to 4).map(Tuple1.apply)) { rdd =>
       checkFilterPushdown(rdd, '_1)('_1 === 1, classOf[Eq[Integer]])(1)
@@ -129,7 +181,7 @@ class ParquetFilterSuite extends QueryTest with ParquetTest {
       checkFilterPushdown(rdd, '_1)('_1 <= 1, classOf[LtEq[java.lang.Long]])(1)
       checkFilterPushdown(rdd, '_1)('_1 >= 4, classOf[GtEq[java.lang.Long]])(4)
 
-      checkFilterPushdown(rdd, '_1)(Literal(1) === '_1, classOf[Eq  [Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(1) === '_1, classOf[Eq  [java.lang.Long]])(1)
       checkFilterPushdown(rdd, '_1)(Literal(2) >   '_1, classOf[Lt  [java.lang.Long]])(1)
       checkFilterPushdown(rdd, '_1)(Literal(3) <   '_1, classOf[Gt  [java.lang.Long]])(4)
       checkFilterPushdown(rdd, '_1)(Literal(1) >=  '_1, classOf[LtEq[java.lang.Long]])(1)
@@ -155,7 +207,7 @@ class ParquetFilterSuite extends QueryTest with ParquetTest {
       checkFilterPushdown(rdd, '_1)('_1 <= 1, classOf[LtEq[java.lang.Float]])(1)
       checkFilterPushdown(rdd, '_1)('_1 >= 4, classOf[GtEq[java.lang.Float]])(4)
 
-      checkFilterPushdown(rdd, '_1)(Literal(1) === '_1, classOf[Eq  [Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(1) === '_1, classOf[Eq  [java.lang.Float]])(1)
       checkFilterPushdown(rdd, '_1)(Literal(2) >   '_1, classOf[Lt  [java.lang.Float]])(1)
       checkFilterPushdown(rdd, '_1)(Literal(3) <   '_1, classOf[Gt  [java.lang.Float]])(4)
       checkFilterPushdown(rdd, '_1)(Literal(1) >=  '_1, classOf[LtEq[java.lang.Float]])(1)
@@ -181,7 +233,7 @@ class ParquetFilterSuite extends QueryTest with ParquetTest {
       checkFilterPushdown(rdd, '_1)('_1 <= 1, classOf[LtEq[java.lang.Double]])(1)
       checkFilterPushdown(rdd, '_1)('_1 >= 4, classOf[GtEq[java.lang.Double]])(4)
 
-      checkFilterPushdown(rdd, '_1)(Literal(1) === '_1, classOf[Eq[Integer]])(1)
+      checkFilterPushdown(rdd, '_1)(Literal(1) === '_1, classOf[Eq  [java.lang.Double]])(1)
       checkFilterPushdown(rdd, '_1)(Literal(2) >   '_1, classOf[Lt  [java.lang.Double]])(1)
       checkFilterPushdown(rdd, '_1)(Literal(3) <   '_1, classOf[Gt  [java.lang.Double]])(4)
       checkFilterPushdown(rdd, '_1)(Literal(1) >=  '_1, classOf[LtEq[java.lang.Double]])(1)
